@@ -57,6 +57,8 @@ var (
 		"control-plane": "controller-manager",
 	}
 
+	profile_1 = "nvidia.com/mig-1g.5gb"
+	
 	controllerImage string
 	daemonsetImage  string
 	ctx             context.Context
