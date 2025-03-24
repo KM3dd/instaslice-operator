@@ -97,6 +97,14 @@ func init() {
 	default:
 		emulated = true
 	}
+	switch strings.ToLower(os.Getenv("A30")) {
+	case "true":
+		profile_1 = "nvidia.com/mig-1g.6gb"
+	case "false":
+		profile_1 = "nvidia.com/mig-1g.5gb"
+	default:
+		profile_1 = "nvidia.com/mig-1g.5gb"
+	}
 	if env := os.Getenv("CRI_BIN"); env != "" {
 		criBin = env
 	}
@@ -181,7 +189,7 @@ var _ = Describe("controller", Ordered, func() {
 
 	Context("Operator", func() {
 		It("should create a pod with no requests and check if finalizer exists", func() {
-			pod := resources.GetVectorAddFinalizerPod()
+			pod := resources.GetVectorAddFinalizerPod(profile_1)
 			err := k8sClient.Create(ctx, pod)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create the pod")
 
@@ -259,7 +267,7 @@ var _ = Describe("controller", Ordered, func() {
 			))
 		})
 		It("should create a pod with no requests and check the allocation in instaslice object", func() {
-			pod := resources.GetVectorAddNoReqPod()
+			pod := resources.GetVectorAddNoReqPod(profile_1)
 			err := k8sClient.Create(ctx, pod)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create the pod")
 
@@ -298,7 +306,7 @@ var _ = Describe("controller", Ordered, func() {
 			}, 2*time.Minute, 5*time.Second).Should(Succeed(), "Expected Instaslice object with valid PodAllocationResult")
 		})
 		It("should create a pod with small requests and check the allocation in instaslice object", func() {
-			pod := resources.GetVectorAddSmallReqPod()
+			pod := resources.GetVectorAddSmallReqPod(profile_1)
 			err := k8sClient.Create(ctx, pod)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create the pod")
 
@@ -324,7 +332,7 @@ var _ = Describe("controller", Ordered, func() {
 			}, 2*time.Minute, 5*time.Second).Should(Succeed(), "Expected Instaslice object with valid allocations")
 		})
 		It("should create a pod with large memory requests and check the allocation in instaslice object", func() {
-			pod := resources.GetVectorAddLargeMemPod()
+			pod := resources.GetVectorAddLargeMemPod(profile_1)
 			err := k8sClient.Create(ctx, pod)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create the pod")
 
@@ -351,7 +359,7 @@ var _ = Describe("controller", Ordered, func() {
 			}, 1*time.Minute, 5*time.Second).Should(Succeed(), "Expected Instaslice object with valid allocations")
 		})
 		It("should create a pod with large cpu requests and check the allocation in instaslice object", func() {
-			pod := resources.GetVectorAddLargeCPUPod()
+			pod := resources.GetVectorAddLargeCPUPod(profile_1)
 			err := k8sClient.Create(ctx, pod)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create the pod")
 
@@ -419,7 +427,7 @@ var _ = Describe("controller", Ordered, func() {
 			}, 2*time.Minute, 5*time.Second).Should(Succeed(), "Expected Instaslice object with valid allocations")
 		})
 		It("should create a statefulset and check the allocation in instaslice object", func() {
-			statefulSet := resources.GetSleepStatefulSet()
+			statefulSet := resources.GetSleepStatefulSet(profile_1)
 			err := k8sClient.Create(ctx, statefulSet)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create the statefulSet")
 
@@ -459,7 +467,7 @@ var _ = Describe("controller", Ordered, func() {
 			}, 2*time.Minute, 5*time.Second).Should(Succeed(), "Expected Instaslice object with valid allocations")
 		})
 		It("should create a job and check the allocation in instaslice object", func() {
-			job := resources.GetSleepJob()
+			job := resources.GetSleepJob(profile_1)
 			err := k8sClient.Create(ctx, job)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create the job")
 
@@ -570,7 +578,7 @@ var _ = Describe("controller", Ordered, func() {
 				return true
 			}, 2*time.Minute, 5*time.Second).Should(BeTrue(), "Expected Instaslice object Allocations to be empty")
 
-			pods := resources.GetMultiPods()
+			pods := resources.GetMultiPods(profile_1)
 			for _, pod := range pods {
 				err := k8sClient.Create(ctx, pod)
 				Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Failed to create pod %s", pod.Name))
@@ -675,7 +683,7 @@ var _ = Describe("controller", Ordered, func() {
 				Expect(currentLen).To(Equal(referenceLen), "Object %s has a different number of GPUs", obj.Name)
 			}
 			numNewNames := referenceLen * 7
-			podTemplate := resources.GetTestGPURunToCompletionWorkload()
+			podTemplate := resources.GetTestGPURunToCompletionWorkload(profile_1)
 
 			DeferCleanup(func() {
 				podList := &corev1.PodList{}
@@ -722,7 +730,7 @@ var _ = Describe("controller", Ordered, func() {
 			if emulated {
 				Skip("Skipping because EmulatorMode is true")
 			}
-			podTemplateLongRunning := resources.GetTestGPULongRunningWorkload()
+			podTemplateLongRunning := resources.GetTestGPULongRunningWorkload(profile_1)
 			err := k8sClient.List(ctx, instasliceObjs, &client.ListOptions{Namespace: namespace})
 			Expect(err).NotTo(HaveOccurred(), "Failed to retrieve Instaslice object")
 			referenceLen := len(instasliceObjs.Items[0].Status.NodeResources.NodeGPUs)

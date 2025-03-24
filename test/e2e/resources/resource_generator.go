@@ -28,7 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func GetVectorAddFinalizerPod() *corev1.Pod {
+func GetVectorAddFinalizerPod(profile_1 string) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "vectoradd-finalizer",
@@ -42,7 +42,7 @@ func GetVectorAddFinalizerPod() *corev1.Pod {
 					Image: "nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda12.5.0-ubi8",
 					Resources: corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
-							"nvidia.com/mig-1g.5gb": resource.MustParse("1"),
+							profile_1: resource.MustParse("1"),
 						},
 					},
 					Command: []string{"sh", "-c", "sleep 20"},
@@ -52,7 +52,7 @@ func GetVectorAddFinalizerPod() *corev1.Pod {
 	}
 }
 
-func GetVectorAddNoReqPod() *corev1.Pod {
+func GetVectorAddNoReqPod(profile_1 string) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "vectoradd-no-req",
@@ -66,7 +66,7 @@ func GetVectorAddNoReqPod() *corev1.Pod {
 					Image: "nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda12.5.0-ubi8",
 					Resources: corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
-							"nvidia.com/mig-1g.5gb": resource.MustParse("1"),
+							profile_1: resource.MustParse("1"),
 						},
 					},
 					Command: []string{"sh", "-c", "sleep 20"},
@@ -76,7 +76,7 @@ func GetVectorAddNoReqPod() *corev1.Pod {
 	}
 }
 
-func GetVectorAddSmallReqPod() *corev1.Pod {
+func GetVectorAddSmallReqPod(profile_1 string) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "vectoradd-small-req",
@@ -94,7 +94,7 @@ func GetVectorAddSmallReqPod() *corev1.Pod {
 							corev1.ResourceMemory: resource.MustParse("128Mi"),
 						},
 						Limits: corev1.ResourceList{
-							"nvidia.com/mig-1g.5gb": resource.MustParse("1"),
+							profile_1: resource.MustParse("1"),
 						},
 					},
 					Command: []string{"sh", "-c", "sleep 20"},
@@ -104,7 +104,7 @@ func GetVectorAddSmallReqPod() *corev1.Pod {
 	}
 }
 
-func GetVectorAddLargeMemPod() *corev1.Pod {
+func GetVectorAddLargeMemPod(profile_1) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "vectoradd-large-mem",
@@ -122,7 +122,7 @@ func GetVectorAddLargeMemPod() *corev1.Pod {
 							corev1.ResourceMemory: resource.MustParse("1000000000000000Mi"),
 						},
 						Limits: corev1.ResourceList{
-							"nvidia.com/mig-1g.5gb": resource.MustParse("1"),
+							profile_1: resource.MustParse("1"),
 						},
 					},
 					Command: []string{"sh", "-c", "sleep 20"},
@@ -132,7 +132,7 @@ func GetVectorAddLargeMemPod() *corev1.Pod {
 	}
 }
 
-func GetVectorAddLargeCPUPod() *corev1.Pod {
+func GetVectorAddLargeCPUPod(profile_1 string) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "vectoradd-large-cpu",
@@ -150,7 +150,7 @@ func GetVectorAddLargeCPUPod() *corev1.Pod {
 							corev1.ResourceMemory: resource.MustParse("256Mi"),
 						},
 						Limits: corev1.ResourceList{
-							"nvidia.com/mig-1g.5gb": resource.MustParse("1"),
+							profile_1: resource.MustParse("1"),
 						},
 					},
 					Command: []string{"sh", "-c", "sleep 20"},
@@ -221,7 +221,7 @@ func GetSleepDeployment() *appsv1.Deployment {
 	}
 }
 
-func GetSleepStatefulSet() *appsv1.StatefulSet {
+func GetSleepStatefulSet(profile_1 string) *appsv1.StatefulSet {
 	return &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "sleep-statefulset",
@@ -264,7 +264,7 @@ func GetSleepStatefulSet() *appsv1.StatefulSet {
 								Limits: corev1.ResourceList{
 									corev1.ResourceCPU:      resource.MustParse("100m"),
 									corev1.ResourceMemory:   resource.MustParse("64Mi"),
-									"nvidia.com/mig-1g.5gb": resource.MustParse("1"),
+									profile_1: resource.MustParse("1"),
 								},
 							},
 						},
@@ -275,7 +275,7 @@ func GetSleepStatefulSet() *appsv1.StatefulSet {
 	}
 }
 
-func GetSleepJob() *batchv1.Job {
+func GetSleepJob(profile_1 string) *batchv1.Job {
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "sleep-job",
@@ -311,7 +311,7 @@ func GetSleepJob() *batchv1.Job {
 								Limits: corev1.ResourceList{
 									corev1.ResourceCPU:      resource.MustParse("100m"),
 									corev1.ResourceMemory:   resource.MustParse("64Mi"),
-									"nvidia.com/mig-1g.5gb": resource.MustParse("1"),
+									profile_1: resource.MustParse("1"),
 								},
 							},
 						},
@@ -323,7 +323,7 @@ func GetSleepJob() *batchv1.Job {
 	}
 }
 
-func GetMultiPods() []*corev1.Pod {
+func GetMultiPods(profile_1 string) []*corev1.Pod {
 	podNames := []string{"p1", "p2", "p3", "p4", "p5", "p6", "p7"}
 	labels := map[string]string{"kueue.x-k8s.io/queue-name": "mig-queue"}
 	pods := make([]*corev1.Pod, 0, len(podNames))
@@ -347,7 +347,7 @@ func GetMultiPods() []*corev1.Pod {
 						},
 						Resources: corev1.ResourceRequirements{
 							Limits: corev1.ResourceList{
-								"nvidia.com/mig-1g.5gb": resource.MustParse("1"),
+								profile_1: resource.MustParse("1"),
 							},
 						},
 					},
@@ -433,7 +433,7 @@ func GetMetricPod(token string) *corev1.Pod {
 	return pod
 }
 
-func GetTestGPURunToCompletionWorkload() *corev1.Pod {
+func GetTestGPURunToCompletionWorkload(profile_1 string) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "vectoradd-finalizer",
@@ -447,7 +447,7 @@ func GetTestGPURunToCompletionWorkload() *corev1.Pod {
 					Image: "nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda12.5.0-ubi8",
 					Resources: corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
-							"nvidia.com/mig-1g.5gb": resource.MustParse("1"),
+							profile_1: resource.MustParse("1"),
 						},
 					},
 					Command: []string{"sh", "-c", "nvidia-smi -L; /cuda-samples/vectorAdd"},
@@ -457,7 +457,7 @@ func GetTestGPURunToCompletionWorkload() *corev1.Pod {
 	}
 }
 
-func GetTestGPULongRunningWorkload() *corev1.Pod {
+func GetTestGPULongRunningWorkload(profile_1 string) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "vectoradd-finalizer",
@@ -471,7 +471,7 @@ func GetTestGPULongRunningWorkload() *corev1.Pod {
 					Image: "nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda12.5.0-ubi8",
 					Resources: corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
-							"nvidia.com/mig-1g.5gb": resource.MustParse("1"),
+							profile_1: resource.MustParse("1"),
 						},
 					},
 					Command: []string{"sh", "-c", "nvidia-smi -L; /cuda-samples/vectorAdd && sleep infinity"},

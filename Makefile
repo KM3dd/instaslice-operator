@@ -143,6 +143,11 @@ test: manifests generate fmt vet envtest ## Run tests.
 test-e2e:
 	@export IMG_TAG=test-e2e; make docker-build; go test ./test/e2e/ -v -ginkgo.v --timeout 20m
 
+.PHONY: test-e2e-a30  # Run the e2e tests against a Kind k8s instance that is spun up.
+test-e2e-a30:
+	@export IMG_TAG=test-e2e; export A30=True; make docker-build; go test ./test/e2e/ -v -ginkgo.v --timeout 20m
+
+
 .PHONY: test-e2e-kind-emulated
 test-e2e-kind-emulated: export IMG_TAG=test-e2e
 test-e2e-kind-emulated: export KIND_NAME=kind-e2e
