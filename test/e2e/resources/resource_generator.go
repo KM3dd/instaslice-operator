@@ -104,7 +104,7 @@ func GetVectorAddSmallReqPod(profile_1 string) *corev1.Pod {
 	}
 }
 
-func GetVectorAddLargeMemPod(profile_1) *corev1.Pod {
+func GetVectorAddLargeMemPod(profile_1 string) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "vectoradd-large-mem",
