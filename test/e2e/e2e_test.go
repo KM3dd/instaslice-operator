@@ -388,7 +388,7 @@ var _ = Describe("controller", Ordered, func() {
 			}, 1*time.Minute, 5*time.Second).Should(Succeed(), "Expected Instaslice object with valid allocations")
 		})
 		It("should create a deployment and check the allocation in instaslice object", func() {
-			deployment := resources.GetSleepDeployment()
+			deployment := resources.GetSleepDeployment(profile_1)
 			err := k8sClient.Create(ctx, deployment)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create the deployment")
 

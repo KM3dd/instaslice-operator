@@ -160,7 +160,7 @@ func GetVectorAddLargeCPUPod(profile_1 string) *corev1.Pod {
 	}
 }
 
-func GetSleepDeployment() *appsv1.Deployment {
+func GetSleepDeployment(profile_1 string) *appsv1.Deployment {
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "sleep-deployment",
@@ -201,7 +201,7 @@ func GetSleepDeployment() *appsv1.Deployment {
 								Limits: corev1.ResourceList{
 									corev1.ResourceCPU:      resource.MustParse("100m"),
 									corev1.ResourceMemory:   resource.MustParse("64Mi"),
-									"nvidia.com/mig-1g.5gb": resource.MustParse("1"),
+									corev1.ResourceName(profile_1): resource.MustParse("1"),
 								},
 							},
 							LivenessProbe: &corev1.Probe{
