@@ -521,49 +521,7 @@ var _ = Describe("controller", Ordered, func() {
 				return fmt.Errorf("No valid allocation found for the pod %s", pod.Name)
 			}, 2*time.Minute, 5*time.Second).Should(Succeed(), "Expected Instaslice object with valid allocations")
 		})
-		It("should verify all MIG slice capacities are as expected before submitting pods", func() {
-			err := k8sClient.List(ctx, instasliceObjs, &client.ListOptions{Namespace: namespace})
-			Expect(err).NotTo(HaveOccurred(), "Failed to retrieve Instaslice object")
-
-			for _, instasliceObj := range instasliceObjs.Items {
-				numGPUs := len(instasliceObj.Status.NodeResources.NodeGPUs)
-
-				expectedCapacities := map[string]int{
-					"instaslice.redhat.com/mig-1g.5gb":    numGPUs * 7,
-					"instaslice.redhat.com/mig-1g.10gb":   numGPUs * 4,
-					"instaslice.redhat.com/mig-1g.5gb+me": numGPUs * 7,
-					"instaslice.redhat.com/mig-2g.10gb":   numGPUs * 3,
-					"instaslice.redhat.com/mig-3g.20gb":   numGPUs * 2,
-					"instaslice.redhat.com/mig-4g.20gb":   numGPUs * 1,
-					"instaslice.redhat.com/mig-7g.40gb":   numGPUs * 1,
-				}
-
-				node := &corev1.Node{}
-				err = k8sClient.Get(ctx, client.ObjectKey{Name: templateVars.NodeNames[0]}, node)
-				Expect(err).NotTo(HaveOccurred(), "Failed to retrieve the node object")
-
-				validateMIGCapacity := func(sliceType string, expectedCapacity int) error {
-					migCapacity, found := node.Status.Capacity[corev1.ResourceName(sliceType)]
-					if !found {
-						return fmt.Errorf("MIG capacity '%s' not found on node %s", sliceType, templateVars.NodeNames[0])
-					}
-
-					actualCapacity, parsed := migCapacity.AsInt64()
-					if !parsed {
-						return fmt.Errorf("failed to parse MIG capacity value %s for slice %s", migCapacity.String(), sliceType)
-					}
-
-					if actualCapacity != int64(expectedCapacity) {
-						return fmt.Errorf("expected MIG capacity %d for slice %s, but got %d", expectedCapacity, sliceType, actualCapacity)
-					}
-					return nil
-				}
-
-				for sliceType, expectedCapacity := range expectedCapacities {
-					Expect(validateMIGCapacity(sliceType, expectedCapacity)).To(Succeed(), fmt.Sprintf("MIG capacity validation failed for %s", sliceType))
-				}
-			}
-		})
+		
 		It("should verify the existence of pod allocations", func() {
 			Eventually(func() bool {
 				err := k8sClient.List(ctx, instasliceObjs, &client.ListOptions{Namespace: namespace})
@@ -784,6 +742,49 @@ var _ = Describe("controller", Ordered, func() {
 				}
 				return longRunningCount-countRunning == 1
 			}, 2*time.Minute, 5*time.Second).Should(BeTrue(), "1 workload should be pending")
+		})
+		It("should verify all MIG slice capacities are as expected before submitting pods", func() {
+			err := k8sClient.List(ctx, instasliceObjs, &client.ListOptions{Namespace: namespace})
+			Expect(err).NotTo(HaveOccurred(), "Failed to retrieve Instaslice object")
+
+			for _, instasliceObj := range instasliceObjs.Items {
+				numGPUs := len(instasliceObj.Status.NodeResources.NodeGPUs)
+
+				expectedCapacities := map[string]int{
+					"instaslice.redhat.com/mig-1g.5gb":    numGPUs * 7,
+					"instaslice.redhat.com/mig-1g.10gb":   numGPUs * 4,
+					"instaslice.redhat.com/mig-1g.5gb+me": numGPUs * 7,
+					"instaslice.redhat.com/mig-2g.10gb":   numGPUs * 3,
+					"instaslice.redhat.com/mig-3g.20gb":   numGPUs * 2,
+					"instaslice.redhat.com/mig-4g.20gb":   numGPUs * 1,
+					"instaslice.redhat.com/mig-7g.40gb":   numGPUs * 1,
+				}
+
+				node := &corev1.Node{}
+				err = k8sClient.Get(ctx, client.ObjectKey{Name: templateVars.NodeNames[0]}, node)
+				Expect(err).NotTo(HaveOccurred(), "Failed to retrieve the node object")
+
+				validateMIGCapacity := func(sliceType string, expectedCapacity int) error {
+					migCapacity, found := node.Status.Capacity[corev1.ResourceName(sliceType)]
+					if !found {
+						return fmt.Errorf("MIG capacity '%s' not found on node %s", sliceType, templateVars.NodeNames[0])
+					}
+
+					actualCapacity, parsed := migCapacity.AsInt64()
+					if !parsed {
+						return fmt.Errorf("failed to parse MIG capacity value %s for slice %s", migCapacity.String(), sliceType)
+					}
+
+					if actualCapacity != int64(expectedCapacity) {
+						return fmt.Errorf("expected MIG capacity %d for slice %s, but got %d", expectedCapacity, sliceType, actualCapacity)
+					}
+					return nil
+				}
+
+				for sliceType, expectedCapacity := range expectedCapacities {
+					Expect(validateMIGCapacity(sliceType, expectedCapacity)).To(Succeed(), fmt.Sprintf("MIG capacity validation failed for %s", sliceType))
+				}
+			}
 		})
 	})
 })
