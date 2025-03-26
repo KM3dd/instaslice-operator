@@ -323,10 +323,10 @@ func GetSleepJob(profile_1 string) *batchv1.Job {
 	}
 }
 
-func GetMultiPods(profile_1 string , a30 bool) []*corev1.Pod {
+func GetMultiPods(profile_1 string , a30 string) []*corev1.Pod {
 	podNames := []string{"p1", "p2", "p3", "p4", "p5", "p6", "p7"}
 
-	if a30 {
+	if a30 == "True" {
 		podNames = []string{"p1", "p2", "p3", "p4"}
 	}
 		
