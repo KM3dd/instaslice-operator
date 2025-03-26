@@ -538,7 +538,7 @@ var _ = Describe("controller", Ordered, func() {
 				return true
 			}, 2*time.Minute, 5*time.Second).Should(BeTrue(), "Expected Instaslice object Allocations to be empty")
 
-			pods := resources.GetMultiPods(profile_1)
+			pods := resources.GetMultiPods(profile_1,os.Getenv("A30"))
 			for _, pod := range pods {
 				err := k8sClient.Create(ctx, pod)
 				Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Failed to create pod %s", pod.Name))
