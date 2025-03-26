@@ -325,6 +325,11 @@ func GetSleepJob(profile_1 string) *batchv1.Job {
 
 func GetMultiPods(profile_1 string) []*corev1.Pod {
 	podNames := []string{"p1", "p2", "p3", "p4", "p5", "p6", "p7"}
+
+	if os.Getenv("A30") {
+		podNames := []string{"p1", "p2", "p3", "p4"}
+	}
+		
 	labels := map[string]string{"kueue.x-k8s.io/queue-name": "mig-queue"}
 	pods := make([]*corev1.Pod, 0, len(podNames))
 
