@@ -17,22 +17,16 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/
 make install
 ```
 
-- Add GPU capacity to the cluster using command
+- Deploy the controller using command
 
 ```console
-kubectl apply -f test/e2e/resources/instaslice-fake-capacity.yaml
+make deploy-emulated
 ```
 
 - Check if InstaSlice object exists using command
 
 ```console
-kubectl describe instaslice
-```
-
-- Deploy the controller using command
-
-```console
-make deploy-emulated
+kubectl describe instaslice -n instaslice-system
 ```
 
 - Wait for controllers to be ready

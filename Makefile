@@ -154,7 +154,7 @@ test-e2e-kind-emulated: export KIND_NAME=kind-e2e
 test-e2e-kind-emulated: export KIND_CONTEXT=kind-kind-e2e
 test-e2e-kind-emulated: export KIND_NODE_NAME=${KIND_NAME}-control-plane
 test-e2e-kind-emulated: export EMULATOR_MODE=true
-test-e2e-kind-emulated: docker-build create-kind-cluster deploy-cert-manager deploy-instaslice-emulated-on-kind
+test-e2e-kind-emulated: docker-build docker-push create-kind-cluster deploy-cert-manager deploy-instaslice-emulated-on-kind
 	export KIND=$(KIND) KUBECTL=$(KUBECTL) IMG=$(IMG) IMG_DMST=$(IMG_DMST) && \
 		ginkgo -v --json-report=report.json --junit-report=report.xml --timeout 20m ./test/e2e
 
@@ -252,6 +252,7 @@ undeploy-cert-manager-ocp:
 .PHONY: deploy-nfd-ocp
 deploy-nfd-ocp:
 	oc apply -f hack/manifests/nfd.yaml
+	oc wait --for condition=established --timeout=60s crd/nodefeaturediscoveries.nfd.openshift.io -n openshift-nfd
 	oc apply -f hack/manifests/nfd-instance.yaml
 	oc describe node | egrep 'Roles|pci' # check for at least on enabled node
 
@@ -263,6 +264,7 @@ undeploy-nfd-ocp:
 .PHONY: deploy-nvidia-ocp
 deploy-nvidia-ocp:
 	oc apply -f hack/manifests/nvidia-cpu-operator.yaml
+	oc wait --for condition=established --timeout=60s crd/clusterpolicies.nvidia.com
 	oc apply -f hack/manifests/gpu-cluster-policy.yaml
 	oc label $(shell oc get node -o name) nvidia.com/mig.config=all-enabled --overwrite
 	oc wait --for=condition=Ready pod -l app=nvidia-operator-validator  -n nvidia-gpu-operator --timeout=300s
