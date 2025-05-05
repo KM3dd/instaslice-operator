@@ -1,0 +1,45 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "https://github.com/konflux-ci/mintmaker/blob/main/config/renovate/renovate.json?raw=true"
+  ],
+  "assigneesFromCodeOwners": true,
+  "automergeStrategy": "auto",
+  "automergeType": "pr",
+  "commitMessagePrefix": "NO-JIRA: ",
+  "ignoreTests": false,
+  "rebaseLabel": "needs-rebase",
+  "rebaseWhen": "behind-base-branch",
+  "recreateWhen": "always",
+  "tekton": {
+    "enabled": true,
+    "packageRules": [
+      {
+        "matchUpdateTypes": [
+          "minor",
+          "patch",
+          "pin",
+          "digest"
+        ],
+        "automerge": true,
+	"addLabels": ["lgtm", "approved"]
+      }
+    ]
+  },
+  "dockerfile": {
+    "enabled": true,
+    "packageRules": [
+      {
+        "matchFileNames": [
+          "Dockerfile.*",
+          "*.Dockerfile"
+        ],
+        "automerge": true,
+	"addLabels": ["lgtm", "approved"]
+      }
+    ]
+  },
+  "gomod": {
+    "enabled": true
+  }
+}

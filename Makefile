@@ -149,7 +149,7 @@ test-e2e-kind-emulated: export KIND_NAME=kind-e2e
 test-e2e-kind-emulated: export KIND_CONTEXT=kind-kind-e2e
 test-e2e-kind-emulated: export KIND_NODE_NAME=${KIND_NAME}-control-plane
 test-e2e-kind-emulated: export EMULATOR_MODE=true
-test-e2e-kind-emulated: docker-build create-kind-cluster deploy-cert-manager deploy-instaslice-emulated-on-kind
+test-e2e-kind-emulated: docker-build docker-push create-kind-cluster deploy-cert-manager deploy-instaslice-emulated-on-kind
 	export KIND=$(KIND) KUBECTL=$(KUBECTL) IMG=$(IMG) IMG_DMST=$(IMG_DMST) && \
 		ginkgo -v --json-report=report.json --junit-report=report.xml --timeout 20m ./test/e2e
 
@@ -219,7 +219,7 @@ test-e2e-konflux: wait-for-instaslice-operator-stable
 	# else exit 1; \
 	# fi
 	hack/label-node.sh
-	ginkgo -v --json-report=report.json --junit-report=report.xml --timeout 20m ./test/e2e
+	go run ./vendor/github.com/onsi/ginkgo/v2/ginkgo -v --json-report=report.json --junit-report=report.xml --timeout 20m ./test/e2e
 
 .PHONY: create-kind-cluster
 create-kind-cluster:
@@ -246,9 +246,7 @@ undeploy-cert-manager-ocp:
 
 .PHONY: deploy-nfd-ocp
 deploy-nfd-ocp:
-	oc apply -f hack/manifests/nfd.yaml
-	oc apply -f hack/manifests/nfd-instance.yaml
-	oc describe node | egrep 'Roles|pci' # check for at least on enabled node
+	hack/deploy-nfd.sh
 
 .PHONY: undeploy-nfd-ocp
 undeploy-nfd-ocp:
@@ -257,10 +255,7 @@ undeploy-nfd-ocp:
 
 .PHONY: deploy-nvidia-ocp
 deploy-nvidia-ocp:
-	oc apply -f hack/manifests/nvidia-cpu-operator.yaml
-	oc apply -f hack/manifests/gpu-cluster-policy.yaml
-	oc label $(shell oc get node -o name) nvidia.com/mig.config=all-enabled --overwrite
-	oc wait --for=condition=Ready pod -l app=nvidia-operator-validator  -n nvidia-gpu-operator --timeout=300s
+	hack/deploy-nvidia.sh
 
 .PHONY: undeploy-nvidia-ocp
 undeploy-nvidia-ocp:
