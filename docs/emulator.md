@@ -1,7 +1,7 @@
 # Emulator mode in InstaSlice
 
 Finding MIGable GPUs with cloud provider is expensive and hard especially for development activities Hence InstaSlice emulator mode was created. When emulator mode on users create a hypothetical capacity in the cluster by setting GPU profiles in the InstaSlice CR. The controller and daemonset both operator on InstaSlice object. This shows InstaSlice unique placement capabilities and enables development of InstaSlice without any physical GPUs on the cluster.
-
+Just a test
 # Steps to use emulator
 
 We use Kustomize to enabled emulator mode.
