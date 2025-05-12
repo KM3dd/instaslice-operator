@@ -13,8 +13,9 @@ type NodeConfig struct {
 }
 
 type Node struct {
-	Name string `json:"name"`
-	Num  string `json:"num"`
+	Name string                   `json:"name"`
+	Num  string                   `json:"num"`
+	GPUs []v1alpha1.DiscoveredGPU `json:gpus`
 }
 
 func GenerateFakeCapacity(nodeName string) *v1alpha1.Instaslice {
@@ -132,6 +133,18 @@ func GenerateFakeCapacitySim(nodes *NodeConfig) []*v1alpha1.Instaslice {
 
 	for i := 0; i < len(nodes.Nodes); i++ {
 
+		var NodeGPUs []v1alpha1.DiscoveredGPU
+
+		for j := 0; j < len(nodes.Nodes[i].GPUs); j++ {
+			gpu := v1alpha1.DiscoveredGPU{
+				GPUUUID:   nodes.Nodes[i].GPUs[j].GPUUUID,
+				GPUName:   nodes.Nodes[i].GPUs[j].GPUName,
+				GPUMemory: nodes.Nodes[i].GPUs[j].GPUMemory,
+			}
+
+			NodeGPUs = append(NodeGPUs, gpu)
+		}
+
 		node := v1alpha1.Instaslice{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      nodes.Nodes[i].Name,
@@ -143,18 +156,7 @@ func GenerateFakeCapacitySim(nodes *NodeConfig) []*v1alpha1.Instaslice {
 			Status: v1alpha1.InstasliceStatus{
 				PodAllocationResults: map[types.UID]v1alpha1.AllocationResult{},
 				NodeResources: v1alpha1.DiscoveredNodeResources{
-					NodeGPUs: []v1alpha1.DiscoveredGPU{
-						{
-							GPUUUID:   "GPU-8d042338-e67f-9c48-92b4-5b55c7e5133c",
-							GPUName:   "NVIDIA A100-PCIE-40GB",
-							GPUMemory: resource.MustParse("40Gi"),
-						},
-						{
-							GPUUUID:   "GPU-31cfe05c-ed13-cd17-d7aa-c63db5108c24",
-							GPUName:   "NVIDIA A100-PCIE-40GB",
-							GPUMemory: resource.MustParse("40Gi"),
-						},
-					},
+					NodeGPUs: NodeGPUs,
 					MigPlacement: map[string]v1alpha1.Mig{
 						"1g.5gb": {
 							CIProfileID:    0,

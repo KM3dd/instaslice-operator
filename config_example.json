@@ -2,15 +2,52 @@
     "Nodes": [
         {
             "name" : "node-1",
-            "num" : "1"
+            "num" : "1",
+            "gpus":[
+                {
+                    "GPUUUID":"GPU-8d042338-1111-9c48-92b4-5b55c7e5133c",
+                    "GPUName": "",
+                    "GPUMemory":""
+                },
+                {
+                    "GPUUUID":"GPU-8d042338-2222-9c48-92b4-5b55c7e5133c",
+                    "GPUName": "",
+                    "GPUMemory":""
+                }
+            ]
         },
         {
             "name" : "node-2",
-            "num" : "2"
+            "num" : "2",
+            "gpus":[
+                {
+                    "GPUUUID":"GPU-8d042338-3333-9c48-92b4-5b55c7e5133c",
+                    "GPUName": "NVIDIA A100-PCIE-40GB",
+                    "GPUMemory":"40Gi"
+                },
+                {
+                    "GPUUUID":"GPU-8d042338-4444-9c48-92b4-5b55c7e5133c",
+                    "GPUName": "NVIDIA A100-PCIE-40GB",
+                    "GPUMemory":"40Gi"
+                },
+                {
+                    "GPUUUID":"GPU-8d042338-5555-9c48-92b4-5b55c7e5133c",
+                    "GPUName": "NVIDIA A100-PCIE-40GB",
+                    "GPUMemory":"40Gi"
+                }
+            ]
+            
         },
         {
             "name" : "node-master",
-            "num" : "3"
+            "num" : "3",
+            "gpus":[
+                {
+                    "GPUUUID":"GPU-8d042338-6666-9c48-92b4-5b55c7e5133c",
+                    "GPUName": "NVIDIA A100-PCIE-40GB",
+                    "GPUMemory":"40Gi"
+                }
+            ]
         }
     ]
 }
