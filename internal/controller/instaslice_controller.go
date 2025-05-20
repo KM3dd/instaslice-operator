@@ -169,6 +169,7 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 	// Pods with scheduling gates other than the InstaSlice gate are not ready to be scheduled and should be ignored
 	if isPodGatedByOthers(pod) {
+		log.Info("Gated by others....")
 		return ctrl.Result{}, nil
 	}
 
@@ -398,6 +399,7 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 
 		for _, instaslice := range instasliceList.Items {
+			log.Info("I am checking instaslice ==> ", "name", instaslice.Name)
 			for uuid, allocations := range instaslice.Status.PodAllocationResults {
 				if allocations.AllocationStatus.AllocationStatusDaemonset == inferencev1alpha1.AllocationStatusCreated && uuid == pod.UID {
 					allocations.AllocationStatus.AllocationStatusController = inferencev1alpha1.AllocationStatusUngated

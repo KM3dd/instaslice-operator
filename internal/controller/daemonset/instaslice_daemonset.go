@@ -114,8 +114,10 @@ func NewInstasliceDaemonsetReconciler(
 func (r *InstaSliceDaemonsetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logr.FromContext(ctx)
 
-	if req.Name != r.NodeName {
-		return ctrl.Result{}, nil
+	if !r.Config.Simulation {
+		if req.Name != r.NodeName {
+			return ctrl.Result{}, nil
+		}
 	}
 
 	//	nsName := types.NamespacedName{
@@ -131,14 +133,20 @@ func (r *InstaSliceDaemonsetReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	// >>>>>> change here : for each instaslice... do the same thing
 	for _, instaslice := range instaSlices.Items {
+		log.Info("Retrieved this instaslice ==> ", "name", instaslice.Name)
+
+		//	if r.Config.Simulation {
+		//			r.NodeName = instaslice.Name
+		//		}
+
+		log.Info("allocation results ===>", "results", instaslice.Status.PodAllocationResults)
 		for podUID, allocResult := range instaslice.Status.PodAllocationResults {
 
 			podRef := instaslice.Spec.PodAllocationRequests[podUID].PodRef
 
 			// 1) Handle "deleting"
 			if allocResult.AllocationStatus.AllocationStatusController == inferencev1alpha1.AllocationStatusDeleting &&
-				allocResult.AllocationStatus.AllocationStatusDaemonset == inferencev1alpha1.AllocationStatusCreated &&
-				allocResult.Nodename == types.NodeName(r.NodeName) {
+				allocResult.AllocationStatus.AllocationStatusDaemonset == inferencev1alpha1.AllocationStatusCreated { // temporarily removed  && allocResult.Nodename == types.NodeName(r.NodeName)
 
 				log.Info("Performing cleanup for pod", "podRef", podRef)
 				if !r.Config.EmulatorModeEnable {
@@ -176,8 +184,8 @@ func (r *InstaSliceDaemonsetReconciler) Reconcile(ctx context.Context, req ctrl.
 
 			// 2) Handle "creating"
 			if allocResult.AllocationStatus.AllocationStatusController == inferencev1alpha1.AllocationStatusCreating &&
-				allocResult.AllocationStatus.AllocationStatusDaemonset == "" &&
-				allocResult.Nodename == types.NodeName(r.NodeName) {
+				allocResult.AllocationStatus.AllocationStatusDaemonset == "" { // temporarily removed  && allocResult.Nodename == types.NodeName(r.NodeName)
+				log.Info("<=== Handeling creation ===> ")
 				exists, err := r.checkConfigMapExists(ctx, string(allocResult.ConfigMapResourceIdentifier), podRef.Namespace)
 				if err != nil {
 					log.Error(err, "error obtianing configmap", string(allocResult.ConfigMapResourceIdentifier))
