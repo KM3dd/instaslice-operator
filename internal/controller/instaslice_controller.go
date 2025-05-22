@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"regexp"
 	"sort"
@@ -80,7 +81,12 @@ type LeftToRightPolicy struct{}
 type FirstFitPolicy struct{}
 
 // Best fit policy is implemented at the moment
-type BestFitPolicy struct{}
+type BestFitPolicy struct {
+	bestAllocRequest *inferencev1alpha1.AllocationRequest
+	bestAllocResult  *inferencev1alpha1.AllocationResult
+	bestInstaslice   *inferencev1alpha1.Instaslice
+	smallestWaste    int
+}
 
 var daemonSetlabel = map[string]string{"app": "controller-daemonset"}
 
@@ -831,6 +837,41 @@ func (r *BestFitPolicy) SetAllocationDetails(profileName string, newStart, size 
 			ConfigMapResourceIdentifier: resourceIdentifier,
 			Conditions:                  []metav1.Condition{},
 		}
+}
+
+func (p *BestFitPolicy) ApplyPolicyOnPod(ctx context.Context, r InstasliceReconciler, instasliceList inferencev1alpha1.InstasliceList, profileName string, pod v1.Pod) (bool, ctrl.Result, error) {
+
+	log := logr.FromContext(ctx)
+	var podHasNodeAllocation bool
+	p.smallestWaste = math.MaxInt32 // Initialize with maximum value
+
+	for _, instaslice := range instasliceList.Items {
+		// find the GPU on the node and the GPU index where the slice can be created
+		allocRequest, allocResult, err := r.findNodeAndDeviceForASlice2(ctx, &instaslice, profileName, *p, &pod)
+		if err != nil {
+			continue
+		}
+		// allocation was successful
+		r.updateCacheWithNewAllocation(allocRequest.PodRef.UID, *allocResult)
+		podHasNodeAllocation = true
+		if podHasNodeAllocation {
+			err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, instaslice.Name, allocResult, allocRequest)
+			if err != nil {
+				return false, ctrl.Result{Requeue: true}, nil
+			}
+			// allocation was successful
+			// update deployed pod total metrics
+			if err := r.UpdateDeployedPodTotalMetrics(string(allocResult.Nodename), allocResult.GPUUUID, allocRequest.PodRef.Namespace, allocRequest.PodRef.Name, allocRequest.Profile, allocResult.MigPlacement.Size); err != nil {
+				log.Error(err, "Failed to update deployed pod metrics (node: %s, namespce: %s, pod: %s): %w", allocResult.Nodename, allocRequest.PodRef.Namespace, allocRequest.PodRef.Name, err)
+			}
+			// update total processed GPU slices metrics
+			if err = r.IncrementTotalProcessedGpuSliceMetrics(instaslice, string(allocResult.Nodename), allocResult.GPUUUID, profileName, &pod); err != nil {
+				log.Error(err, "Failed to update total processed GPU slices metric", "nodeName", allocResult.Nodename, "gpuID", allocResult.GPUUUID)
+			}
+
+		}
+	}
+	return podHasNodeAllocation, ctrl.Result{}, nil
 }
 
 // Policy based allocation - LeftToRIght

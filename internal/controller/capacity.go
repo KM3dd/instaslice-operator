@@ -31,7 +31,7 @@ import (
 // checks the classical resources like CPU and memory and continuous GPU index available
 // before making an allocation.
 
-// find node, gpu and gpu index to place the slice
+// find node, gpu and gpu index to place the slice : firstFit
 func (r *InstasliceReconciler) findNodeAndDeviceForASlice(ctx context.Context, instaslice *inferencev1alpha1.Instaslice, profileName string, policy AllocationPolicy, pod *v1.Pod) (*inferencev1alpha1.AllocationRequest, *inferencev1alpha1.AllocationResult, error) {
 	updatedInstaSliceObject, err := r.getInstasliceObject(ctx, instaslice.Name, instaslice.Namespace)
 	if err != nil {
@@ -96,6 +96,88 @@ func (r *InstasliceReconciler) findNodeAndDeviceForASlice(ctx context.Context, i
 		}
 	}
 	return nil, nil, fmt.Errorf("failed to find allocatable node and gpu")
+}
+
+// find node, gpu and gpu index to place the slice : Bestfit
+func (r *InstasliceReconciler) findNodeAndDeviceForASlice2(ctx context.Context, instaslice *inferencev1alpha1.Instaslice, profileName string, policy BestFitPolicy, pod *v1.Pod) (*inferencev1alpha1.AllocationRequest, *inferencev1alpha1.AllocationResult, error) {
+	updatedInstaSliceObject, err := r.getInstasliceObject(ctx, instaslice.Name, instaslice.Namespace)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var waste int
+	availableResources := r.availableClassicalResourcesOnNode(updatedInstaSliceObject)
+	nodeAvailableCpu := availableResources[v1.ResourceCPU]
+	nodeAvailableMemory := availableResources[v1.ResourceMemory]
+
+	cpuRequest, cpuOk := pod.Spec.Containers[0].Resources.Requests[v1.ResourceCPU]
+	if cpuOk {
+		log.FromContext(ctx).Info("cpu request obtained", "pod", pod.Name, "value", cpuRequest.String())
+	} else {
+		log.FromContext(ctx).Info("cpu request not set for", "pod", pod.Name)
+	}
+	memoryRequest, memOk := pod.Spec.Containers[0].Resources.Requests[v1.ResourceMemory]
+	if memOk {
+		log.FromContext(ctx).Info("memory request obtained", "pod", pod.Name, "value", memoryRequest.String())
+	} else {
+		log.FromContext(ctx).Info("memory request not set for", "pod", pod.Name)
+	}
+
+	if cpuRequest.Cmp(nodeAvailableCpu) < 0 && memoryRequest.Cmp(nodeAvailableMemory) < 0 {
+		// TODO: Discover GPU UUIDs for selection. (This may work for A100 and H100 for now.)
+		gpuUUIDs := sortGPUs(updatedInstaSliceObject)
+		for _, gpuuuid := range gpuUUIDs {
+			if updatedInstaSliceObject.Spec.PodAllocationRequests == nil {
+				updatedInstaSliceObject.Spec.PodAllocationRequests = make(map[types.UID]inferencev1alpha1.AllocationRequest)
+			}
+			gpuAllocatedIndex := r.gpuAllocatedSlices(gpuuuid)
+			newStart := r.getStartIndexFromAllocationResults(updatedInstaSliceObject, profileName, gpuAllocatedIndex, &pod.UID, false)
+			// For example, a newStart of 9 is considered invalid.
+			notValidIndex := int32(9)
+			if newStart == notValidIndex {
+				// Move to next GPU if the index is not valid.
+				continue
+			}
+			size, discoveredGiprofile, Ciprofileid, Ciengprofileid := r.extractGpuProfile(updatedInstaSliceObject, profileName)
+			resourceIdentifier := pod.Spec.Containers[0].EnvFrom[0].ConfigMapRef.Name
+
+			allocRequest, allocResult := policy.SetAllocationDetails(
+				profileName,
+				newStart,
+				size,
+				pod.GetUID(),
+				types.NodeName(updatedInstaSliceObject.GetName()),
+				inferencev1alpha1.AllocationStatus{AllocationStatusController: inferencev1alpha1.AllocationStatusCreating},
+				discoveredGiprofile,
+				Ciprofileid,
+				Ciengprofileid,
+				pod.GetNamespace(),
+				pod.GetName(),
+				gpuuuid,
+				types.UID(resourceIdentifier),
+				v1.ResourceList{
+					v1.ResourceCPU:    cpuRequest,
+					v1.ResourceMemory: memoryRequest,
+				},
+			)
+			// Calculate waste for this allocation
+			waste = r.calculateWasteForAllocation(updatedInstaSliceObject, gpuuuid, newStart, size)
+
+			// If this allocation has less waste than our current best, update best allocation
+			if waste < policy.smallestWaste {
+				policy.smallestWaste = waste
+				policy.bestAllocRequest = allocRequest
+				policy.bestAllocResult = allocResult
+				policy.bestInstaslice = instaslice
+			}
+			return allocRequest, allocResult, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("failed to find allocatable node and gpu")
+}
+
+func (r *InstasliceReconciler) calculateWasteForAllocation(updatedInstaSliceObject *inferencev1alpha1.Instaslice, gpuuuid string, newStart int32, size int32) int {
+	return 0
 }
 
 // sortGPUs returns the sorted gpu IDs stored in the instaslice object
