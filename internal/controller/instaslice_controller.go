@@ -842,36 +842,46 @@ func (r *BestFitPolicy) SetAllocationDetails(profileName string, newStart, size 
 func (p *BestFitPolicy) ApplyPolicyOnPod(ctx context.Context, r InstasliceReconciler, instasliceList inferencev1alpha1.InstasliceList, profileName string, pod v1.Pod) (bool, ctrl.Result, error) {
 
 	log := logr.FromContext(ctx)
-	var podHasNodeAllocation bool
+
+	podHasNodeAllocation := false
+	var err error
+	var allocRequest *inferencev1alpha1.AllocationRequest
+	var allocResult *inferencev1alpha1.AllocationResult
+
 	p.smallestWaste = math.MaxInt32 // Initialize with maximum value
 
-	for _, instaslice := range instasliceList.Items {
-		// find the GPU on the node and the GPU index where the slice can be created
-		allocRequest, allocResult, err := r.findNodeAndDeviceForASlice2(ctx, &instaslice, profileName, *p, &pod)
-		if err != nil {
-			continue
-		}
+	//	for _, instaslice := range instasliceList.Items {
+	// find the GPU on the node and the GPU index where the slice can be created
+	p = r.findNodeAndDeviceForASlice2(ctx, &instasliceList, profileName, *p, &pod)
+	//		if err != nil {
+	//			continue
+	//		}
+
+	if p.bestAllocResult != nil && p.bestInstaslice != nil {
 		// allocation was successful
-		r.updateCacheWithNewAllocation(allocRequest.PodRef.UID, *allocResult)
+		r.updateCacheWithNewAllocation(p.bestAllocRequest.PodRef.UID, *p.bestAllocResult)
 		podHasNodeAllocation = true
-		if podHasNodeAllocation {
-			err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, instaslice.Name, allocResult, allocRequest)
+		if podHasNodeAllocation { //remove this if statement
+			err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, string(p.bestAllocResult.Nodename), allocResult, allocRequest)
 			if err != nil {
 				return false, ctrl.Result{Requeue: true}, nil
 			}
 			// allocation was successful
 			// update deployed pod total metrics
-			if err := r.UpdateDeployedPodTotalMetrics(string(allocResult.Nodename), allocResult.GPUUUID, allocRequest.PodRef.Namespace, allocRequest.PodRef.Name, allocRequest.Profile, allocResult.MigPlacement.Size); err != nil {
-				log.Error(err, "Failed to update deployed pod metrics (node: %s, namespce: %s, pod: %s): %w", allocResult.Nodename, allocRequest.PodRef.Namespace, allocRequest.PodRef.Name, err)
+			if err := r.UpdateDeployedPodTotalMetrics(string(p.bestAllocResult.Nodename), p.bestAllocResult.GPUUUID, p.bestAllocRequest.PodRef.Namespace, p.bestAllocRequest.PodRef.Name, p.bestAllocRequest.Profile, p.bestAllocResult.MigPlacement.Size); err != nil {
+				log.Error(err, "Failed to update deployed pod metrics (node: %s, namespce: %s, pod: %s): %w", p.bestAllocResult.Nodename, p.bestAllocRequest.PodRef.Namespace, p.bestAllocRequest.PodRef.Name, err)
 			}
 			// update total processed GPU slices metrics
-			if err = r.IncrementTotalProcessedGpuSliceMetrics(instaslice, string(allocResult.Nodename), allocResult.GPUUUID, profileName, &pod); err != nil {
-				log.Error(err, "Failed to update total processed GPU slices metric", "nodeName", allocResult.Nodename, "gpuID", allocResult.GPUUUID)
+			if err = r.IncrementTotalProcessedGpuSliceMetrics(*p.bestInstaslice, string(p.bestAllocResult.Nodename), p.bestAllocResult.GPUUUID, profileName, &pod); err != nil {
+				log.Error(err, "Failed to update total processed GPU slices metric", "nodeName", p.bestAllocResult.Nodename, "gpuID", p.bestAllocResult.GPUUUID)
 			}
-
+			return podHasNodeAllocation, ctrl.Result{}, nil
 		}
+
 	}
-	return podHasNodeAllocation, ctrl.Result{}, nil
+
+	return podHasNodeAllocation, ctrl.Result{}, err
+
 }
 
 // Policy based allocation - LeftToRIght
