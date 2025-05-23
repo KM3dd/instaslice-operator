@@ -160,7 +160,7 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// TODO: should we rebuild cache on node failure?
 
 	// Continue with the rest of the reconciliation logic
-	policy := &FirstFitPolicy{}
+	policy := &BestFitPolicy{}
 	pod := &v1.Pod{}
 	var instasliceList inferencev1alpha1.InstasliceList
 	if err = r.List(ctx, &instasliceList, &client.ListOptions{}); err != nil {
@@ -845,8 +845,6 @@ func (p *BestFitPolicy) ApplyPolicyOnPod(ctx context.Context, r InstasliceReconc
 
 	podHasNodeAllocation := false
 	var err error
-	var allocRequest *inferencev1alpha1.AllocationRequest
-	var allocResult *inferencev1alpha1.AllocationResult
 
 	p.smallestWaste = math.MaxInt32 // Initialize with maximum value
 
@@ -862,7 +860,7 @@ func (p *BestFitPolicy) ApplyPolicyOnPod(ctx context.Context, r InstasliceReconc
 		r.updateCacheWithNewAllocation(p.bestAllocRequest.PodRef.UID, *p.bestAllocResult)
 		podHasNodeAllocation = true
 		if podHasNodeAllocation { //remove this if statement
-			err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, string(p.bestAllocResult.Nodename), allocResult, allocRequest)
+			err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, string(p.bestAllocResult.Nodename), p.bestAllocResult, p.bestAllocRequest)
 			if err != nil {
 				return false, ctrl.Result{Requeue: true}, nil
 			}
