@@ -1,0 +1,15 @@
+{
+    "Nodes": [
+        {
+            "name" : "node-1",
+            "num" : "1",
+            "gpus":[
+                {
+                    "GPUUUID":"GPU-8d042338-1111-9c48-92b4-5b55c7e5133c",
+                    "GPUName": "NVIDIA A100-PCIE-40GB",
+                    "GPUMemory":"40Gi"
+                }
+            ]
+        }
+    ]
+}

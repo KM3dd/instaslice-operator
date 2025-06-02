@@ -8,6 +8,16 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+type NodeConfig struct {
+	Nodes []Node `json:"Nodes"`
+}
+
+type Node struct {
+	Name string                   `json:"name"`
+	Num  string                   `json:"num"`
+	GPUs []v1alpha1.DiscoveredGPU `json:gpus`
+}
+
 func GenerateFakeCapacity(nodeName string) *v1alpha1.Instaslice {
 	return &v1alpha1.Instaslice{
 		ObjectMeta: metav1.ObjectMeta{
@@ -115,4 +125,124 @@ func GenerateFakeCapacity(nodeName string) *v1alpha1.Instaslice {
 			},
 		},
 	}
+}
+
+func GenerateFakeCapacitySim(nodes *NodeConfig) []*v1alpha1.Instaslice {
+
+	var instaslices []*v1alpha1.Instaslice
+
+	for i := 0; i < len(nodes.Nodes); i++ {
+
+		var NodeGPUs []v1alpha1.DiscoveredGPU
+
+		for j := 0; j < len(nodes.Nodes[i].GPUs); j++ {
+			gpu := v1alpha1.DiscoveredGPU{
+				GPUUUID:   nodes.Nodes[i].GPUs[j].GPUUUID,
+				GPUName:   nodes.Nodes[i].GPUs[j].GPUName,
+				GPUMemory: nodes.Nodes[i].GPUs[j].GPUMemory,
+			}
+
+			NodeGPUs = append(NodeGPUs, gpu)
+		}
+
+		node := v1alpha1.Instaslice{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      nodes.Nodes[i].Name,
+				Namespace: "instaslice-system",
+			},
+			Spec: v1alpha1.InstasliceSpec{
+				PodAllocationRequests: map[types.UID]v1alpha1.AllocationRequest{},
+			},
+			Status: v1alpha1.InstasliceStatus{
+				PodAllocationResults: map[types.UID]v1alpha1.AllocationResult{},
+				NodeResources: v1alpha1.DiscoveredNodeResources{
+					NodeGPUs: NodeGPUs,
+					MigPlacement: map[string]v1alpha1.Mig{
+						"1g.5gb": {
+							CIProfileID:    0,
+							CIEngProfileID: 0,
+							GIProfileID:    0,
+							Placements: []v1alpha1.Placement{
+								{Size: 1, Start: 0},
+								{Size: 1, Start: 1},
+								{Size: 1, Start: 2},
+								{Size: 1, Start: 3},
+								{Size: 1, Start: 4},
+								{Size: 1, Start: 5},
+								{Size: 1, Start: 6},
+							},
+						},
+						"2g.10gb": {
+							CIProfileID:    1,
+							CIEngProfileID: 0,
+							GIProfileID:    1,
+							Placements: []v1alpha1.Placement{
+								{Size: 2, Start: 0},
+								{Size: 2, Start: 2},
+								{Size: 2, Start: 4},
+							},
+						},
+						"3g.20gb": {
+							CIProfileID:    2,
+							CIEngProfileID: 0,
+							GIProfileID:    2,
+							Placements: []v1alpha1.Placement{
+								{Size: 4, Start: 0},
+								{Size: 4, Start: 4},
+							},
+						},
+						"4g.20gb": {
+							CIProfileID:    3,
+							CIEngProfileID: 0,
+							GIProfileID:    3,
+							Placements: []v1alpha1.Placement{
+								{Size: 4, Start: 0},
+							},
+						},
+						"7g.40gb": {
+							CIProfileID:    4,
+							CIEngProfileID: 0,
+							GIProfileID:    4,
+							Placements: []v1alpha1.Placement{
+								{Size: 8, Start: 0},
+							},
+						},
+						"1g.5gb+me": {
+							CIProfileID:    7,
+							CIEngProfileID: 0,
+							GIProfileID:    7,
+							Placements: []v1alpha1.Placement{
+								{Size: 1, Start: 0},
+								{Size: 1, Start: 1},
+								{Size: 1, Start: 2},
+								{Size: 1, Start: 3},
+								{Size: 1, Start: 4},
+								{Size: 1, Start: 5},
+								{Size: 1, Start: 6},
+							},
+						},
+						"1g.10gb": {
+							CIProfileID:    9,
+							CIEngProfileID: 0,
+							GIProfileID:    9,
+							Placements: []v1alpha1.Placement{
+								{Size: 2, Start: 0},
+								{Size: 2, Start: 2},
+								{Size: 2, Start: 4},
+								{Size: 2, Start: 6},
+							},
+						},
+					},
+					NodeResources: v1.ResourceList{
+						v1.ResourceCPU:    resource.MustParse("72"),
+						v1.ResourceMemory: resource.MustParse("1000000000"),
+					},
+				},
+			},
+		}
+
+		instaslices = append(instaslices, &node)
+	}
+
+	return instaslices
 }
