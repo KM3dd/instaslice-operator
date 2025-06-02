@@ -62,6 +62,7 @@ type InstasliceReconciler struct {
 	RunningOnOpenShift bool
 	allocationCache    map[types.UID]inferencev1alpha1.AllocationResult
 	isCacheInitialized bool
+	// reconciling interface time.time
 }
 
 // AllocationPolicy interface with a single method
