@@ -377,7 +377,7 @@ func (r *InstaSliceDaemonsetReconciler) SetupWithManager(mgr ctrl.Manager) error
 			fakeCapacity = utils.GenerateFakeCapacitySim(NodesConf)
 
 			for _, is := range fakeCapacity {
-				
+
 				var currentInstaslice inferencev1alpha1.Instaslice
 				currentNamespacedName := types.NamespacedName{
 					Name:      is.Name,
@@ -389,19 +389,15 @@ func (r *InstaSliceDaemonsetReconciler) SetupWithManager(mgr ctrl.Manager) error
 					return err
 				}
 
-				
 				currentInstaslice.Status = is.Status
 
-				
 				if err := r.Status().Update(ctx, &currentInstaslice); err != nil {
 					log.Error(err, "could not update fake capacity", "node_name", r.NodeName)
 					return err
 				}
 
-				
 				time.Sleep(2 * time.Second)
 
-				
 				err := wait.PollUntilContextTimeout(ctx, 2*time.Second, 10*time.Second, true, func(ctx context.Context) (done bool, err error) {
 					var updatedInstaslice inferencev1alpha1.Instaslice
 					if err := r.Get(ctx, currentNamespacedName, &updatedInstaslice); err != nil {

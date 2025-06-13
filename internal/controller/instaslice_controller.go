@@ -113,6 +113,8 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 	}
 
+	log.Info("the recieved request ===========>>> req", "req", req)
+
 	// 1. Ensure DaemonSet is deployed
 	daemonSet := &appsv1.DaemonSet{}
 	err := r.Get(ctx, types.NamespacedName{Name: InstasliceDaemonsetName, Namespace: InstaSliceOperatorNamespace}, daemonSet)
@@ -380,6 +382,9 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		// exit after handling deletion event for a pod.
 		return ctrl.Result{}, nil
 	}
+
+	// if it is SyncPeriod : Do logic
+	//else : return
 
 	// find allocation in the cluster for the pod
 	// set allocationstatus to creating when controller adds the allocation
