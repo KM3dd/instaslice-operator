@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"math/rand"
 	"regexp"
 	"sort"
 	"strings"
@@ -63,6 +62,8 @@ type InstasliceReconciler struct {
 	allocationCache    map[types.UID]inferencev1alpha1.AllocationResult
 	isCacheInitialized bool
 	// reconciling interface time.time
+	NextReconcile time.Time
+	//NextReconcileSet bool
 }
 
 // AllocationPolicy interface with a single method
@@ -112,8 +113,6 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			return ctrl.Result{}, err
 		}
 	}
-
-	log.Info("the recieved request ===========>>> req", "req", req)
 
 	// 1. Ensure DaemonSet is deployed
 	daemonSet := &appsv1.DaemonSet{}
@@ -383,114 +382,162 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
-	// if it is SyncPeriod : Do logic
-	//else : return
-
 	// find allocation in the cluster for the pod
 	// set allocationstatus to creating when controller adds the allocation
 	// check for allocationstatus as created when daemonset is done realizing the slice on the GPU node.
 	// set allocationstatus to ungated and ungate the pod so that the workload can begin execution.
-	if isPodGated {
+	log.Info("New pod arrival event...")
+	if r.NextReconcile.IsZero() {
+		log.Info("First time initializing Next Reconcile")
+		now := time.Now()
+		r.NextReconcile = now.Add(2 * time.Minute)
+		return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
+	}
+	if r.NextReconcile.After(time.Now().Add(1 * time.Second)) {
+		log.Info("Next Reconciling cycle is not here yet.. skipping")
+		return ctrl.Result{}, nil
+	} else { // it's time to reconcile
 		// return error if there are no containers in the pod
-		if len(pod.Spec.Containers) == 0 {
-			return ctrl.Result{}, fmt.Errorf(noContainerInsidePodErr+", pod: %v", pod.Name)
-		}
-		// Assume pod only has one container with one GPU requests
-		if len(pod.Spec.Containers) != 1 {
-			return ctrl.Result{}, fmt.Errorf(multipleContainersUnsupportedErr+", pod: %v", pod.Name)
-		}
-		limits := pod.Spec.Containers[0].Resources.Limits
-		profileName := r.extractProfileName(limits)
-		var podHasNodeAllocation bool
-		// search if pod has allocation in any of the instaslice object in the cluster
-		// TODO: allocations may get slower as the cluster size increases
-		for _, instaslice := range instasliceList.Items {
-			for uuid := range instaslice.Spec.PodAllocationRequests {
-				// no matter the state if allocations exists for a pod skip such a pod
-				if uuid == pod.UID {
-					podHasNodeAllocation = true
-				}
-			}
-		}
+		log.Info("It's time !!! ")
 
-		for _, instaslice := range instasliceList.Items {
-			for uuid, allocations := range instaslice.Status.PodAllocationResults {
-				if allocations.AllocationStatus.AllocationStatusDaemonset == inferencev1alpha1.AllocationStatusCreated && uuid == pod.UID {
-					allocations.AllocationStatus.AllocationStatusController = inferencev1alpha1.AllocationStatusUngated
-					allocRequest := instaslice.Spec.PodAllocationRequests[uuid]
-					if err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, instaslice.Name, &allocations, &allocRequest); err != nil {
-						return ctrl.Result{Requeue: true}, err
-					}
-					result, err := r.addNodeSelectorAndUngatePod(ctx, pod, &allocations)
-					if err != nil {
-						return result, err
-					}
-					break
-				}
-				// InstaSlice object got updated with ungated status but the controller failed
-				// ungating the pod.
-				if allocations.AllocationStatus.AllocationStatusController == inferencev1alpha1.AllocationStatusUngated && uuid == pod.UID {
-					result, err := r.addNodeSelectorAndUngatePod(ctx, pod, &allocations)
-					if err != nil {
-						return result, err
+		// 1. list pods
+		var pods v1.PodList
+		err = r.List(ctx, &pods, client.InNamespace("default"))
+		if err != nil {
+			log.Info("can't list pod in default namespace", "err", err)
+		}
+		// 2. for each pod find Node
+
+		for _, pod := range pods.Items {
+			log.Info("pods i'm gonna treat", "podName", pod)
+			if len(pod.Spec.Containers) == 0 {
+				return ctrl.Result{}, fmt.Errorf(noContainerInsidePodErr+", pod: %v", pod.Name)
+			}
+			// Assume pod only has one container with one GPU requests
+			if len(pod.Spec.Containers) != 1 {
+				return ctrl.Result{}, fmt.Errorf(multipleContainersUnsupportedErr+", pod: %v", pod.Name)
+			}
+			limits := pod.Spec.Containers[0].Resources.Limits
+			profileName := r.extractProfileName(limits)
+			var podHasNodeAllocation bool
+			// search if pod has allocation in any of the instaslice object in the cluster
+			// TODO: allocations may get slower as the cluster size increases
+			for _, instaslice := range instasliceList.Items {
+				for uuid := range instaslice.Spec.PodAllocationRequests {
+					// no matter the state if allocations exists for a pod skip such a pod
+					if uuid == pod.UID {
+						podHasNodeAllocation = true
 					}
 				}
 			}
-			// Fetch latest Instaslice state before updating metrics
-			updatedInstaslice, err := r.getInstasliceObject(ctx, instaslice.Name, instaslice.Namespace)
-			if err != nil {
-				log.Error(err, "Failed to get latest Instaslice object", "instaslice", instaslice.Name)
-				return ctrl.Result{Requeue: true}, nil
+			// pod does not have an allocation yet, make allocation
+			// find the node
+			if !podHasNodeAllocation {
+				sort.Slice(instasliceList.Items, func(i, j int) bool {
+					// Sort by Name in ascending order
+					return instasliceList.Items[i].Name < instasliceList.Items[j].Name
+				})
+				err := r.rebuildAllocationCache(ctx)
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+
+				r.CleanupOrphanedAllocations(ctx, &instasliceList)
+
+				// Apply policy :
+
+				podHasNodeAllocation, _, err := policy.ApplyPolicyOnPod(ctx, *r, instasliceList, profileName, pod)
+				if err != nil {
+					log.Error(err, "Something went wrong while applying policy")
+				}
+				if !podHasNodeAllocation { // if the cluster does not have suitable node, requeue request
+					log.Info("no suitable node found in cluster for ", "pod", pod.Name)
+					// Generate a random duration between 1 and 10 seconds
+				}
+				result, err := r.addNodeSelectorAndUngatePod(ctx, &pod, policy.bestAllocResult)
+				if err != nil {
+					log.Info("error ungating pod.. ")
+					return result, err
+				}
+				//change in the respective instaslice and ungate :
+				// updatedInstaslice, _ := r.getInstasliceObject(ctx, instaslice.Name, instaslice.Namespace)
+				// for uuid, allocations := range updatedInstaslice.Status.PodAllocationResults {
+				// 	log.Info("allocationstatus daemonset is the following", "AllocationStatusDaemonset", allocations.AllocationStatus.AllocationStatusDaemonset)
+				// 	if uuid == pod.UID { // removed allocations.AllocationStatus.AllocationStatusDaemonset == inferencev1alpha1.AllocationStatusCreated &&  from conditoin
+				// 		allocRequest := updatedInstaslice.Spec.PodAllocationRequests[uuid]
+				// 		if err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, updatedInstaslice.Name, &allocations, &allocRequest); err != nil {
+				// 			log.Info("there is an err1 here.. ")
+				// 			return ctrl.Result{Requeue: true}, err
+				// 		}
+				// 		log.Info("in the first ungating call..")
+				// 		result, err := r.addNodeSelectorAndUngatePod(ctx, &pod, &allocations)
+				// 		if err != nil {
+				// 			log.Info("there is an err2 here.. ")
+				// 			return result, err
+				// 		}
+				// 		break
+				// 	}
+				// 	// InstaSlice object got updated with ungated status but the controller failed
+				// 	// ungating the pod.
+				// 	if allocations.AllocationStatus.AllocationStatusController == inferencev1alpha1.AllocationStatusUngated && uuid == pod.UID {
+				// 		log.Info("in the second ungating call..")
+				// 		result, err := r.addNodeSelectorAndUngatePod(ctx, &pod, &allocations)
+				// 		if err != nil {
+				// 			log.Info("there is an err3 here.. ")
+				// 			return result, err
+				// 		}
+				// 	}
+				// }
 			}
-			// update compatible profiles metrics
-			if err := r.UpdateCompatibleProfilesMetrics(*updatedInstaslice, instaslice.Name); err != nil {
-				log.Error(err, "Failed to update Compatible Profiles Metrics", "nodeName", updatedInstaslice.Name)
-			}
+			// this is for pods that were scheduled by the controller before but the daemonset didn't
+			// for _, instaslice := range instasliceList.Items {
+			// 	log.Info("instalice items loop", "PodAllocationResults", instaslice.Status.PodAllocationResults)
+			// 	for uuid, allocations := range instaslice.Status.PodAllocationResults {
+			// 		log.Info("allocationstatus daemonset is the following", "AllocationStatusDaemonset", allocations.AllocationStatus.AllocationStatusDaemonset)
+			// 		if allocations.AllocationStatus.AllocationStatusDaemonset == inferencev1alpha1.AllocationStatusCreated && uuid == pod.UID {
+			// 			allocations.AllocationStatus.AllocationStatusController = inferencev1alpha1.AllocationStatusUngated
+			// 			allocRequest := instaslice.Spec.PodAllocationRequests[uuid]
+			// 			if err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, instaslice.Name, &allocations, &allocRequest); err != nil {
+			// 				log.Info("there is an err1 here.. ")
+			// 				return ctrl.Result{Requeue: true}, err
+			// 			}
+			// 			log.Info("in the first ungating call..")
+			// 			result, err := r.addNodeSelectorAndUngatePod(ctx, &pod, &allocations)
+			// 			if err != nil {
+			// 				log.Info("there is an err2 here.. ")
+			// 				return result, err
+			// 			}
+			// 			break
+			// 		}
+			// 		// InstaSlice object got updated with ungated status but the controller failed
+			// 		// ungating the pod.
+			// 		if allocations.AllocationStatus.AllocationStatusController == inferencev1alpha1.AllocationStatusUngated && uuid == pod.UID {
+			// 			log.Info("in the second ungating call..")
+			// 			result, err := r.addNodeSelectorAndUngatePod(ctx, &pod, &allocations)
+			// 			if err != nil {
+			// 				log.Info("there is an err3 here.. ")
+			// 				return result, err
+			// 			}
+			// 		}
+			// 	}
+			// 	// Fetch latest Instaslice state before updating metrics
+			// 	updatedInstaslice, err := r.getInstasliceObject(ctx, instaslice.Name, instaslice.Namespace)
+			// 	if err != nil {
+			// 		log.Error(err, "Failed to get latest Instaslice object", "instaslice", instaslice.Name)
+			// 		return ctrl.Result{Requeue: true}, nil
+			// 	}
+			// 	// update compatible profiles metrics
+			// 	if err := r.UpdateCompatibleProfilesMetrics(*updatedInstaslice, instaslice.Name); err != nil {
+			// 		log.Error(err, "Failed to update Compatible Profiles Metrics", "nodeName", updatedInstaslice.Name)
+			// 	}
+			// }
+
 		}
-		// pod does not have an allocation yet, make allocation
-		// find the node
-		if !podHasNodeAllocation {
-			sort.Slice(instasliceList.Items, func(i, j int) bool {
-				// Sort by Name in ascending order
-				return instasliceList.Items[i].Name < instasliceList.Items[j].Name
-			})
-			err := r.rebuildAllocationCache(ctx)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-
-			r.CleanupOrphanedAllocations(ctx, &instasliceList)
-
-			// Apply policy :
-
-			podHasNodeAllocation, _, _ = policy.ApplyPolicyOnPod(ctx, *r, instasliceList, profileName, *pod)
-
-		}
-
-		if podHasNodeAllocation { //remove this if statement
-			err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, string(policy.bestAllocResult.Nodename), policy.bestAllocResult, policy.bestAllocRequest)
-			if err != nil {
-				return ctrl.Result{Requeue: true}, nil
-			}
-			// allocation was successful
-			// update deployed pod total metrics
-			if err := r.UpdateDeployedPodTotalMetrics(string(policy.bestAllocResult.Nodename), policy.bestAllocResult.GPUUUID, policy.bestAllocRequest.PodRef.Namespace, policy.bestAllocRequest.PodRef.Name, policy.bestAllocRequest.Profile, policy.bestAllocResult.MigPlacement.Size); err != nil {
-				log.Error(err, "Failed to update deployed pod metrics (node: %s, namespce: %s, pod: %s): %w", policy.bestAllocResult.Nodename, policy.bestAllocRequest.PodRef.Namespace, policy.bestAllocRequest.PodRef.Name, err)
-			}
-			// update total processed GPU slices metrics
-			if err = r.IncrementTotalProcessedGpuSliceMetrics(*policy.bestInstaslice, string(policy.bestAllocResult.Nodename), policy.bestAllocResult.GPUUUID, profileName, pod); err != nil {
-				log.Error(err, "Failed to update total processed GPU slices metric", "nodeName", policy.bestAllocResult.Nodename, "gpuID", policy.bestAllocResult.GPUUUID)
-			}
-			return ctrl.Result{}, nil
-		} else { // if the cluster does not have suitable node, requeue request
-			log.Info("no suitable node found in cluster for ", "pod", pod.Name)
-			// Generate a random duration between 1 and 10 seconds
-			randomDuration := time.Duration(rand.Intn(10)+1) * time.Second
-			return ctrl.Result{RequeueAfter: randomDuration}, nil
-		}
+		r.NextReconcile = r.NextReconcile.Add(2 * time.Minute)
+		log.Info("Next Reconcile is updated", "NextReconcile", r.NextReconcile)
+		return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
 
 	}
-	return ctrl.Result{}, nil
 }
 
 // createInstaSliceDaemonSet - create the DaemonSet object
@@ -735,7 +782,7 @@ func (r *InstasliceReconciler) setupWithManager(mgr ctrl.Manager) error {
 	return nil
 }
 
-func (r *InstasliceReconciler) unGatePod(podUpdate *v1.Pod) *v1.Pod {
+func (r *InstasliceReconciler) unGatePod(podUpdate v1.Pod) v1.Pod {
 	for i, gate := range podUpdate.Spec.SchedulingGates {
 		if gate.Name == GateName {
 			podUpdate.Spec.SchedulingGates = append(podUpdate.Spec.SchedulingGates[:i], podUpdate.Spec.SchedulingGates[i+1:]...)
@@ -859,16 +906,14 @@ func (r *BestFitPolicy) SetAllocationDetails(profileName string, newStart, size 
 		}
 }
 
-func (p *BestFitPolicy) ApplyPolicyOnPod(ctx context.Context, r InstasliceReconciler, instasliceList inferencev1alpha1.InstasliceList, profileName string, pod v1.Pod) (bool, ctrl.Result, error) {
+func (p *BestFitPolicy) ApplyPolicyOnPod(ctx context.Context, r InstasliceReconciler, instasliceList inferencev1alpha1.InstasliceList, profileName string, pod v1.Pod) (bool, *inferencev1alpha1.Instaslice, error) {
 
 	log := logr.FromContext(ctx)
 
-	podHasNodeAllocation := false
 	var err error
 
+	podHasNodeAllocation := false
 	p.smallestWaste = math.MaxInt32 // Initialize with maximum value
-
-	//	for _, instaslice := range instasliceList.Items {
 	// find the GPU on the node and the GPU index where the slice can be created
 	p = r.findNodeAndDeviceForASlice2(ctx, &instasliceList, profileName, *p, &pod)
 	//		if err != nil {
@@ -877,13 +922,29 @@ func (p *BestFitPolicy) ApplyPolicyOnPod(ctx context.Context, r InstasliceReconc
 
 	if p.bestAllocResult != nil && p.bestInstaslice != nil {
 		// allocation was successful
-		log.Info("found allocation for pod %v ", pod.Name)
+		log.Info("pod is allocated successfully ", " pod", pod)
 		r.updateCacheWithNewAllocation(p.bestAllocRequest.PodRef.UID, *p.bestAllocResult)
 		podHasNodeAllocation = true
-		return podHasNodeAllocation, ctrl.Result{}, nil
-	}
+		if podHasNodeAllocation {
+			p.bestAllocResult.AllocationStatus.AllocationStatusDaemonset = inferencev1alpha1.AllocationStatusCreated
+			p.bestAllocResult.AllocationStatus.AllocationStatusController = inferencev1alpha1.AllocationStatusUngated
+			err := utils.UpdateOrDeleteInstasliceAllocations(ctx, r.Client, string(p.bestAllocResult.Nodename), p.bestAllocResult, p.bestAllocRequest)
+			if err != nil {
+				return podHasNodeAllocation, p.bestInstaslice, err
+			}
+			// allocation was successful
+			// update deployed pod total metrics
+			if err := r.UpdateDeployedPodTotalMetrics(string(p.bestAllocResult.Nodename), p.bestAllocResult.GPUUUID, p.bestAllocRequest.PodRef.Namespace, p.bestAllocRequest.PodRef.Name, p.bestAllocRequest.Profile, p.bestAllocResult.MigPlacement.Size); err != nil {
+				log.Error(err, "Failed to update deployed pod metrics (node: %s, namespce: %s, pod: %s): %w", p.bestAllocResult.Nodename, p.bestAllocRequest.PodRef.Namespace, p.bestAllocRequest.PodRef.Name, err)
+			}
+			// update total processed GPU slices metrics
+			if err = r.IncrementTotalProcessedGpuSliceMetrics(*p.bestInstaslice, string(p.bestAllocResult.Nodename), p.bestAllocResult.GPUUUID, profileName, &pod); err != nil {
+				log.Error(err, "Failed to update total processed GPU slices metric", "nodeName", p.bestAllocResult.Nodename, "gpuID", p.bestAllocResult.GPUUUID)
+			}
 
-	return podHasNodeAllocation, ctrl.Result{}, err
+		}
+	}
+	return true, p.bestInstaslice, err
 
 }
 
@@ -925,13 +986,17 @@ func (r *InstasliceReconciler) setInstasliceAllocationToDeleting(ctx context.Con
 }
 
 func (r *InstasliceReconciler) addNodeSelectorAndUngatePod(ctx context.Context, pod *v1.Pod, allocResult *inferencev1alpha1.AllocationResult) (ctrl.Result, error) {
-	if pod.Spec.NodeSelector == nil {
-		pod.Spec.NodeSelector = make(map[string]string)
+	log := logr.FromContext(ctx)
+	log.Info("ungating pod", "ungatedPod", *pod)
+	podResource := *pod
+	if podResource.Spec.NodeSelector == nil {
+		podResource.Spec.NodeSelector = make(map[string]string)
 	}
-	pod.Spec.NodeSelector[NodeLabel] = string(allocResult.Nodename)
+	//podResource.Spec.NodeSelector[NodeLabel] = string(allocResult.Nodename)
+	podResource.Spec.NodeSelector[NodeLabel] = "node-1"
 
-	ungatedPod := r.unGatePod(pod)
-	err := r.Update(ctx, ungatedPod)
+	ungatedPod := r.unGatePod(podResource)
+	err := r.Update(ctx, &ungatedPod)
 	if err != nil {
 		logr.FromContext(ctx).Error(err, "error ungating pod")
 		return ctrl.Result{Requeue: true}, err

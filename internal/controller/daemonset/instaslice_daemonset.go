@@ -208,10 +208,10 @@ func (r *InstaSliceDaemonsetReconciler) Reconcile(ctx context.Context, req ctrl.
 							string(allocResult.ConfigMapResourceIdentifier))
 						if err != nil {
 							log.Error(err, "failed to create config map (emulator mode)")
-							return ctrl.Result{RequeueAfter: controller.Requeue1sDelay}, err
+							return ctrl.Result{}, err
 						}
 						// Emulating cost to create CI and GI on a GPU
-						time.Sleep(controller.Requeue1sDelay)
+						//time.Sleep(controller.Requeue1sDelay)
 					} else {
 						device, retCode := nvml.DeviceGetHandleByUUID(allocResult.GPUUUID)
 						if retCode != nvml.SUCCESS {
