@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -391,9 +392,9 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if r.NextReconcile.IsZero() {
 		log.Info("First time initializing Next Reconcile")
 		now := time.Now()
-		r.NextReconcile = now.Add(2 * time.Minute)
+		r.NextReconcile = now.Add(1 * time.Minute)
 		log.Info("Next Reconcile will be : ", "r.NextReconcile", r.NextReconcile)
-		return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
+		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	}
 	if r.NextReconcile.After(time.Now()) {
 		log.Info("Next Reconciling cycle is not here yet.. skipping", "r.NextReconcile", r.NextReconcile)
@@ -410,18 +411,13 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 		// 2. sort pods based on their demand :
 
-		pods = r.SortPods(pods)
-
-		for _, pod := range pods.Items {
-			log.Info("this loop to see if pods are sorted")
-			log.Info("pod data : ", "podName", pod.Spec.Containers[0].Name, "podResource", pod.Spec.Containers[0].Resources.Limits)
-		}
+		pods = r.SortPodsMinMax(pods)
 
 		// 3. for each pod find Node
 
 		for _, pod := range pods.Items {
 			if checkIfPodGatedByInstaSlice(&pod) {
-				log.Info("pods i'm gonna treat", "podName", pod.Spec.Containers[0].Name)
+
 				if len(pod.Spec.Containers) == 0 {
 					return ctrl.Result{}, fmt.Errorf(noContainerInsidePodErr+", pod: %v", pod.Name)
 				}
@@ -546,13 +542,68 @@ func (r *InstasliceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 			}
 		}
-		r.NextReconcile = r.NextReconcile.Add(2 * time.Minute)
+		r.NextReconcile = r.NextReconcile.Add(1 * time.Minute)
 		log.Info("Next Reconcile is updated", "NextReconcile", r.NextReconcile)
-		return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
+		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 
 	}
 }
 
+//////////////////// Sorting methods for policy (START) ////////////////////////
+
+// Sorting method 1 : by alpha*compute + beta*time using normalization with min max
+func (r *InstasliceReconciler) SortPodsMinMax(pods v1.PodList) v1.PodList {
+
+	// 1. First pass: collect all compute counts and ages for normalization
+	computeCounts := make([]float64, len(pods.Items))
+	ages := make([]float64, len(pods.Items))
+
+	now := time.Now()
+	for i, pod := range pods.Items {
+		computeCounts[i] = r.computeCount(pod.Spec.Containers[0].Resources.Limits)
+		ages[i] = now.Sub(pod.CreationTimestamp.Time).Seconds()
+	}
+
+	// 2. Find min/max for normalization
+	minCompute, maxCompute := findMinMax(computeCounts)
+	minAge, maxAge := findMinMax(ages)
+	// Sort pods using normalized scores
+	sort.Slice(pods.Items, func(i, j int) bool {
+		scoreI := r.computeScoreMaxMin(pods.Items[i], minCompute, maxCompute, minAge, maxAge, now)
+		scoreJ := r.computeScoreMaxMin(pods.Items[j], minCompute, maxCompute, minAge, maxAge, now)
+		return scoreI > scoreJ // Higher score = higher priority
+	})
+
+	return pods
+}
+
+// Sorting method 2 : by alpha*compute + beta*time using notmalization with devision on max
+func (r *InstasliceReconciler) SortPodsMax(pods v1.PodList) v1.PodList {
+
+	// 1. First pass: collect all compute counts and ages for normalization
+	computeCounts := make([]float64, len(pods.Items))
+	ages := make([]float64, len(pods.Items))
+
+	now := time.Now()
+	for i, pod := range pods.Items {
+		computeCounts[i] = r.computeCount(pod.Spec.Containers[0].Resources.Limits)
+		ages[i] = now.Sub(pod.CreationTimestamp.Time).Seconds()
+	}
+
+	// 2. Find min/max for normalization
+	maxAge := slices.Max(ages)
+
+	// Sort pods using normalized scores
+	sort.Slice(pods.Items, func(i, j int) bool {
+		scoreI := r.computeScoreMax(pods.Items[i], maxAge, now)
+		scoreJ := r.computeScoreMax(pods.Items[j], maxAge, now)
+		return scoreI > scoreJ // Higher score = higher priority
+	})
+
+	return pods
+}
+
+// Sorting method 3 : by demande
 func (r *InstasliceReconciler) SortPods(pods v1.PodList) v1.PodList {
 	sort.Slice(pods.Items, func(i, j int) bool {
 		// Sort by compute type
@@ -561,18 +612,139 @@ func (r *InstasliceReconciler) SortPods(pods v1.PodList) v1.PodList {
 	return pods
 }
 
-func (r *InstasliceReconciler) computeCount(limits v1.ResourceList) int {
+func (r *InstasliceReconciler) computeScoreMaxMin(pod v1.Pod, minCompute, maxCompute, minAge, maxAge float64, now time.Time) float64 {
+
+	computeCount := r.computeCount(pod.Spec.Containers[0].Resources.Limits)
+	age := now.Sub(pod.CreationTimestamp.Time).Seconds()
+
+	// 1. normalize compute
+	var normalizedCompute float64
+	if maxCompute > minCompute {
+		normalizedCompute = (computeCount - minCompute) / (maxCompute - minCompute)
+	} else {
+		normalizedCompute = 1.0 // if all pods have same compute demand
+	}
+	// 2. normalize age
+	var normalizedAge float64
+	if maxAge > minAge {
+		normalizedAge = (age - minAge) / (maxAge - minAge)
+	} else {
+		normalizedAge = 1.0 // All pods have same age
+	}
+
+	// 3. return the value
+	score := 0.7*normalizedCompute + 0.3*normalizedAge
+
+	return score
+
+}
+
+func (r *InstasliceReconciler) computeScoreMax(pod v1.Pod, maxAge float64, now time.Time) float64 {
+
+	computeCount := r.computeCount(pod.Spec.Containers[0].Resources.Limits)
+	age := now.Sub(pod.CreationTimestamp.Time).Seconds()
+
+	// 1. normalize compute
+	normalizedCompute := computeCount / 7
+
+	// 2. normalize age
+
+	normalizedAge := age / maxAge
+
+	// 3. return the value
+	score := 0.7*normalizedCompute + 0.3*normalizedAge
+
+	return score
+
+}
+
+func (r *InstasliceReconciler) computeScoreSum(pod v1.Pod, sumComputes, sumAges float64, now time.Time) float64 {
+
+	computeCount := r.computeCount(pod.Spec.Containers[0].Resources.Limits)
+	age := now.Sub(pod.CreationTimestamp.Time).Seconds()
+
+	// 1. normalize compute
+	normalizedCompute := computeCount / sumComputes
+
+	// 2. normalize age
+
+	normalizedAge := age / sumAges
+
+	// 3. return the value
+	score := 0.7*normalizedCompute + 0.3*normalizedAge
+
+	return score
+
+}
+
+// Sorting method 2 : by alpha*compute + beta*time using notmalization with devision on max
+func (r *InstasliceReconciler) SortPodsSum(pods v1.PodList) v1.PodList {
+
+	// 1. First pass: collect all compute counts and ages for normalization
+	computeCounts := make([]float64, len(pods.Items))
+	ages := make([]float64, len(pods.Items))
+
+	now := time.Now()
+	for i, pod := range pods.Items {
+		computeCounts[i] = r.computeCount(pod.Spec.Containers[0].Resources.Limits)
+		ages[i] = now.Sub(pod.CreationTimestamp.Time).Seconds()
+	}
+
+	// 2. Sum compute and age for normalization
+	sumComputes := sum(computeCounts)
+	sumAges := sum(ages)
+
+	// Sort pods using normalized scores
+	sort.Slice(pods.Items, func(i, j int) bool {
+		scoreI := r.computeScoreSum(pods.Items[i], sumComputes, sumAges, now)
+		scoreJ := r.computeScoreSum(pods.Items[j], sumComputes, sumAges, now)
+		return scoreI > scoreJ // Higher score = higher priority
+	})
+
+	return pods
+}
+
+// Helper function to find min and max values in a slice
+func findMinMax(values []float64) (float64, float64) {
+	if len(values) == 0 {
+		return 0, 0
+	}
+
+	min, max := values[0], values[0]
+	for _, v := range values[1:] {
+		if v < min {
+			min = v
+		}
+		if v > max {
+			max = v
+		}
+	}
+	return min, max
+}
+
+func (r *InstasliceReconciler) computeCount(limits v1.ResourceList) float64 {
 	re := regexp.MustCompile(`(\d+)g\.`)
 	profileName := r.extractProfileName(limits)
 	matches := re.FindStringSubmatch(profileName)
 	if len(matches) >= 2 {
-		count, _ := strconv.Atoi(matches[1])
+		count, _ := strconv.ParseFloat(matches[1], 64)
 		return count
 	}
 
 	return 0
 
 }
+
+func sum(arr []float64) float64 {
+	var sum float64
+	for _, val := range arr {
+		sum += val
+	}
+
+	return sum
+}
+
+//////////////////// Sorting methods for policy (END) ///////////////////////////
 
 // createInstaSliceDaemonSet - create the DaemonSet object
 func (r *InstasliceReconciler) createInstaSliceDaemonSet(namespace string) *appsv1.DaemonSet {
